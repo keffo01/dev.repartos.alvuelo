@@ -2,6 +2,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -12,23 +13,30 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+
+// Importación del contexto global (Ajusta la ruta según tu estructura)
+import { useDriver } from '../context/driverContext';
 import { Driver } from '../types';
 
 const { width } = Dimensions.get('window');
 
-// Reemplaza con la URL de tu API Gateway expuesta
+// Endpoint de API Gateway
 const API_GATEWAY_URL = 'https://jfzj8yx48i.execute-api.us-east-2.amazonaws.com/Dev/login/riders';
 
 interface LoginScreenProps {
-  onLoginSuccess: (driver: Driver) => void;
+  onLoginSuccess?: (driver: Driver) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Hooks de contexto y navegación
+  const { setDriver } = useDriver();
+  const router = useRouter();
 
   // Obtener el Expo Push Token del dispositivo
   const getExpoPushToken = async (): Promise<string | null> => {
@@ -51,10 +59,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         return null;
       }
 
-      // Obtener el token
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        // projectId de tu app en app.json (extraData.eas.projectId) si usas EAS Build
-      });
+      // Obtener token
+      const tokenData = await Notifications.getExpoPushTokenAsync({});
 
       if (Platform.OS === 'android') {
         Notifications.setNotificationChannelAsync('default', {
@@ -107,8 +113,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      // 3. Login Exitoso
-      onLoginSuccess(data.user);
+      // 3. Login Exitoso: Guardar en el estado global (Context) y AsyncStorage
+      setDriver(data.user);
+
+      // Ejecutar callback si existe
+      if (onLoginSuccess) {
+        onLoginSuccess(data.user);
+      }
+
+      // NAVEGACIÓN AUTOMÁTICA AL DASHBOARD
+      router.replace('/');
     } catch (error) {
       console.error('Error en login:', error);
       Alert.alert('Error', 'No se pudo conectar con el servidor.');
@@ -128,9 +142,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       <View style={styles.loginForm}>
         <Text style={styles.inputLabel}>Correo Electrónico</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="repartidor@alvuelo.com" 
+        <TextInput
+          style={styles.input}
+          placeholder="repartidor@alvuelo.com"
           placeholderTextColor="#999"
           value={email}
           onChangeText={setEmail}
@@ -139,17 +153,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         />
 
         <Text style={styles.inputLabel}>Contraseña</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="********" 
+        <TextInput
+          style={styles.input}
+          placeholder="********"
           placeholderTextColor="#999"
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity 
-          style={[styles.loginButton, loading && styles.loginButtonDisabled]} 
+        <TouchableOpacity
+          style={[styles.loginButton, loading && styles.loginButtonDisabled]}
           onPress={handleLogin}
           disabled={loading}
         >
@@ -161,6 +175,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     </View>
   );
 };
+
+export default LoginScreen;
 
 const styles = StyleSheet.create({
   loginContainer: { flex: 1, backgroundColor: '#1E1E2C', justifyContent: 'center', alignItems: 'center' },

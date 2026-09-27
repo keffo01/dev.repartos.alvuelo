@@ -62,5 +62,40 @@ async updateOrderStatus(
     });
     if (!response.ok) throw new Error("No se pudo obtener el detalle del pedido");
     return await response.json();
+  },
+
+  async getProfile(email: string) {
+    const response = await fetch(`${API_BASE_URL}/rider/profile?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al consultar el perfil del repartidor');
+    }
+
+    return await response.json();
+  },
+
+  // 2. Cambiar estado de disponibilidad (DISPONIBLE / FUERA_DE_LINEA)
+  async updateRiderStatus(email: string, riderStatus: string) {
+    const response = await fetch(`${API_BASE_URL}/rider/update-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        riderStatus,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al actualizar el estado de disponibilidad');
+    }
+
+    return await response.json();
   }
 };

@@ -1,19 +1,32 @@
 // app/index.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+
+// Importación del hook global (Ajusta la ruta según la carpeta real)
+import { useDriver } from '../src/context/driverContext';
+
 import { DashboardScreen } from '../src/screens/dashboardScreen';
 import { LoginScreen } from '../src/screens/loginScreen';
 import { OrderDetailScreen } from '../src/screens/orderDetailScreen';
-import { Driver, Order, ScreenName } from '../src/types';
+import { Order, ScreenName } from '../src/types';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenName>('LOGIN');
-  const [driver, setDriver] = useState<Driver | null>(null);
-  
+  // 1. Obtener estado y funciones sincronizadas desde el DriverContext
+  const { driver, setDriver, isLoading } = useDriver();
+
+  const [currentScreen, setCurrentScreen] = useState<ScreenName>('DASHBOARD');
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [orderStep, setOrderStep] = useState<number>(0);
   const [isOnline, setIsOnline] = useState<boolean>(false);
 
-  const handleLoginSuccess = (user: Driver) => {
+  // 2. Transición automática a DASHBOARD en cuanto se detecte sesión activa
+  useEffect(() => {
+    if (driver && currentScreen === 'LOGIN') {
+      setCurrentScreen('DASHBOARD');
+    }
+  }, [driver, currentScreen]);
+
+  const handleLoginSuccess = (user: any) => {
     setDriver(user);
     setCurrentScreen('DASHBOARD');
   };
@@ -38,45 +51,34 @@ export default function App() {
     setCurrentScreen('DASHBOARD');
   };
 
-  // 1. Pantalla de Autenticación
-  if (currentScreen === 'LOGIN' || !driver) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
-  }
-
-  // 2. Pantalla de Dashboard
-  if (currentScreen === 'DASHBOARD' && driver) {
+  // 3. Pantalla de carga mientras lee la sesión guardada de AsyncStorage
+  if (isLoading) {
     return (
-      <DashboardScreen 
-        driver={driver}
-        isOnline={isOnline}
-        setIsOnline={setIsOnline}
-        activeOrder={activeOrder}
-        onLogout={handleLogout}
-        onAcceptOrder={acceptOrder}
-        onViewActiveOrder={() => {
-          // Si no hay activeOrder definido pero el repartidor tiene un asignamiento en DynamoDB
-          if (!activeOrder && driver?.currentAssignment) {
-            setActiveOrder({
-              id: driver.currentAssignment.orderId,
-              status: driver.currentAssignment.status || 'INICIADO',
-            } as any);
-          }
-          setCurrentScreen('ORDER_DETAIL');
-        }}
-      />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1E1E2C' }}>
+        <ActivityIndicator size="large" color="#2ECC71" />
+      </View>
     );
   }
 
-  // Determinar la orden efectiva a renderizar
-  const effectiveOrder = activeOrder || (driver?.currentAssignment ? ({
-    id: driver.currentAssignment.orderId,
-    status: driver.currentAssignment.status || 'INICIADO',
-  } as any) : null);
+  // 4. Si no hay repartidor o la pantalla elegida es LOGIN, renderiza el Login
+  if (!driver || currentScreen === 'LOGIN') {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
 
-  // 3. Pantalla de Detalle de la Orden
-  if (currentScreen === 'ORDER_DETAIL' && driver && effectiveOrder) {
+  // Determinar la orden activa a renderizar
+  const effectiveOrder =
+    activeOrder ||
+    (driver?.currentAssignment
+      ? ({
+          id: driver.currentAssignment.orderId,
+          status: driver.currentAssignment.status || 'INICIADO',
+        } as any)
+      : null);
+
+  // 5. Pantalla de Detalle de la Orden
+  if (currentScreen === 'ORDER_DETAIL' && effectiveOrder) {
     return (
-      <OrderDetailScreen 
+      <OrderDetailScreen
         order={effectiveOrder}
         orderStep={orderStep}
         setOrderStep={setOrderStep}
@@ -87,16 +89,24 @@ export default function App() {
     );
   }
 
-  // Resguardo para evitar renderizado nulo/pantalla blanca
+  // 6. Pantalla de Dashboard por defecto cuando está autenticado
   return (
-    <DashboardScreen 
+    <DashboardScreen
       driver={driver}
       isOnline={isOnline}
       setIsOnline={setIsOnline}
       activeOrder={activeOrder}
       onLogout={handleLogout}
       onAcceptOrder={acceptOrder}
-      onViewActiveOrder={() => setCurrentScreen('ORDER_DETAIL')}
+      onViewActiveOrder={() => {
+        if (!activeOrder && driver?.currentAssignment) {
+          setActiveOrder({
+            id: driver.currentAssignment.orderId,
+            status: driver.currentAssignment.status || 'INICIADO',
+          } as any);
+        }
+        setCurrentScreen('ORDER_DETAIL');
+      }}
     />
   );
 }

@@ -35,7 +35,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
   const [currentStatus, setCurrentStatus] = useState<string>('INICIADO');
 
-  // Normalizar estados como 'asignada' a la convención en mayúsculas
+  // Normalizar el estado 'asignada' a 'INICIADO'
   const normalizeStatus = (rawStatus: string) => {
     if (!rawStatus || rawStatus.toLowerCase() === 'asignada') return 'INICIADO';
     return rawStatus.toUpperCase();
@@ -65,7 +65,32 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     fetchFullOrder();
   }, [orderId]);
 
-  // Transiciones de estado y etiquetas del botón
+  // Apertura de Google Maps con Coordenadas Lat/Lng o Dirección
+  const handleOpenMaps = (lat?: number | null, lng?: number | null, address?: string) => {
+    let url = '';
+
+    if (lat && lng) {
+      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    } else if (address) {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    }
+
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        Alert.alert("Error", "No se pudo abrir la aplicación de mapas.");
+      });
+    } else {
+      Alert.alert("Aviso", "No hay ubicación ni dirección registrada para esta orden.");
+    }
+  };
+
+  // Realizar llamada al cliente
+  const handleCallCustomer = (phone: string) => {
+    if (!phone) return;
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  // Flujo secuencial de estados del repartidor
   const getNextStateInfo = () => {
     const normStatus = normalizeStatus(currentStatus);
     switch (normStatus) {
@@ -110,11 +135,6 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     }
   };
 
-  const handleCallCustomer = (phone: string) => {
-    if (!phone) return;
-    Linking.openURL(`tel:${phone}`);
-  };
-
   const { label, color, icon } = getNextStateInfo();
   const normStatus = normalizeStatus(currentStatus);
 
@@ -129,7 +149,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Encabezado con margen seguro */}
+      {/* Encabezado adaptable a la barra de estado */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#2C3E50" />
@@ -139,7 +159,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Línea de Progreso */}
+        {/* Progreso de la entrega */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Progreso de Entrega</Text>
           <View style={styles.stepperContainer}>
@@ -167,7 +187,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* Cliente y Dirección */}
+        {/* Cliente y Dirección con botón de Google Maps */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <View style={[styles.iconBox, { backgroundColor: '#FDEDEC' }]}>
@@ -177,7 +197,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
               <Text style={styles.infoLabel}>CLIENTE</Text>
               <Text style={styles.infoTitle}>{orderDetails?.customerName || 'Cliente'}</Text>
             </View>
-            {orderDetails?.customerPhone && (
+            {orderDetails?.customerPhone ? (
               <TouchableOpacity
                 style={styles.phoneBtn}
                 onPress={() => handleCallCustomer(orderDetails.customerPhone)}
@@ -185,7 +205,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
                 <Ionicons name="call-outline" size={16} color="#27AE60" />
                 <Text style={styles.phoneBtnText}>Llamar</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
 
           <View style={styles.divider} />
@@ -197,11 +217,29 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             <View style={styles.infoTextContainer}>
               <Text style={styles.infoLabel}>DIRECCIÓN DE ENTREGA</Text>
               <Text style={styles.infoTitle}>{orderDetails?.deliveryAddress || 'Sin dirección especificada'}</Text>
+              {orderDetails?.reference ? (
+                <Text style={styles.infoSub}>Ref: {orderDetails.reference}</Text>
+              ) : null}
             </View>
+            
+            {/* Botón Navegar a Google Maps */}
+            <TouchableOpacity
+              style={styles.mapBtn}
+              onPress={() =>
+                handleOpenMaps(
+                  orderDetails?.latitude,
+                  orderDetails?.longitude,
+                  orderDetails?.deliveryAddress
+                )
+              }
+            >
+              <Ionicons name="navigate-outline" size={16} color="#2980B9" />
+              <Text style={styles.mapBtnText}>Navegar</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Lista de Ítems */}
+        {/* Lista de productos */}
         {Array.isArray(orderDetails?.items) && orderDetails.items.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Productos ({orderDetails.items.length})</Text>
@@ -221,7 +259,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         )}
 
-        {/* Método de Pago y Montos */}
+        {/* Resumen financiero */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Resumen de Pago</Text>
           
@@ -257,7 +295,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
         </View>
       </ScrollView>
 
-      {/* Botón Flotante para Avanzar Estado */}
+      {/* Botón flotante para avanzar de estado */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: color }]}
@@ -389,6 +427,11 @@ const styles = StyleSheet.create({
     color: '#2C3E50',
     marginTop: 2,
   },
+  infoSub: {
+    fontSize: 12,
+    color: '#7F8C8D',
+    marginTop: 2,
+  },
   phoneBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,6 +444,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#27AE60',
+    marginLeft: 4,
+  },
+  mapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF5FB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  mapBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2980B9',
     marginLeft: 4,
   },
   divider: {
