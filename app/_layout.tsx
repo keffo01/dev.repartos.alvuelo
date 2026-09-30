@@ -5,25 +5,41 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
 import 'react-native-reanimated';
 
-// Importación del DriverProvider (Ajusta la ruta si se ubica en src/context/driverContext)
+// Contexto y Servicio de Notificaciones
 import { DriverProvider } from '../src/context/driverContext';
+import { registerForPushNotificationsAsync } from '../src/services/pushNotificationService';
 
-// Manejador global de notificaciones
+// 🟢 CRÍTICO: Define cómo debe reaccionar la app si la notificación llega mientras está ABIERTA
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
+    shouldVibrate: true,
   }),
 });
 
 function RootLayoutNav() {
+  useEffect(() => {
+    const initNotifications = async () => {
+      const token = await registerForPushNotificationsAsync();
+      if (token) {
+        console.log('Expo Push Token del repartidor:', token);
+        // Aquí puedes enviar el token a tu backend si lo necesitas
+      }
+    };
+
+    initNotifications();
+  }, []);
+
   const colorScheme = useColorScheme();
+  
+  // Tu hook para escuchar cuando el repartidor toca/abre la notificación
   useNotificationObserver();
 
   return (

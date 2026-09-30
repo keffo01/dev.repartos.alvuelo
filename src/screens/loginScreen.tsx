@@ -1,13 +1,11 @@
 // src/screens/LoginScreen.tsx
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
-  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,13 +14,12 @@ import {
   View,
 } from 'react-native';
 
-// Importación del contexto global (Ajusta la ruta según tu estructura)
 import { useDriver } from '../context/driverContext';
+import { registerForPushNotificationsAsync } from '../services/pushNotificationService';
 import { Driver } from '../types';
 
 const { width } = Dimensions.get('window');
 
-// Endpoint de API Gateway
 const API_GATEWAY_URL = 'https://jfzj8yx48i.execute-api.us-east-2.amazonaws.com/Dev/login/riders';
 
 interface LoginScreenProps {
@@ -34,49 +31,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Hooks de contexto y navegación
   const { setDriver } = useDriver();
   const router = useRouter();
-
-  // Obtener el Expo Push Token del dispositivo
-  const getExpoPushToken = async (): Promise<string | null> => {
-    if (!Device.isDevice) {
-      console.log('Las notificaciones Push requieren un dispositivo físico.');
-      return null;
-    }
-
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
-        Alert.alert('Permiso Denegado', 'No se pudieron obtener permisos para notificaciones push.');
-        return null;
-      }
-
-      // Obtener token
-      const tokenData = await Notifications.getExpoPushTokenAsync({});
-
-      if (Platform.OS === 'android') {
-        Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
-      }
-
-      return tokenData.data;
-    } catch (error) {
-      console.error('Error al obtener Expo Push Token:', error);
-      return null;
-    }
-  };
 
   const handleLogin = async () => {
     const cleanEmail = email.toLowerCase().trim();
@@ -89,10 +45,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
-      // 1. Obtener Expo Push Token
-      const pushToken = await getExpoPushToken();
+      // 1. Obtener el Expo Push Token usando el servicio unificado
+      const pushToken = await registerForPushNotificationsAsync();
+      console.log('📲 Token obtenido en Login:', pushToken);
 
-      // 2. Enviar credenciales a API Gateway / Lambda
+      // 2. Enviar credenciales y Push Token a la Lambda
       const response = await fetch(API_GATEWAY_URL, {
         method: 'POST',
         headers: {
@@ -109,19 +66,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       if (!response.ok) {
         Alert.alert('Error de Autenticación', data.message || 'Credenciales inválidas');
-        setLoading(false);
         return;
       }
 
-      // 3. Login Exitoso: Guardar en el estado global (Context) y AsyncStorage
+      // 3. Login Exitoso: Guardar en el estado global y navegar
       setDriver(data.user);
 
-      // Ejecutar callback si existe
       if (onLoginSuccess) {
         onLoginSuccess(data.user);
       }
 
-      // NAVEGACIÓN AUTOMÁTICA AL DASHBOARD
       router.replace('/');
     } catch (error) {
       console.error('Error en login:', error);
@@ -136,7 +90,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       <StatusBar barStyle="light-content" />
       <View style={styles.loginHeader}>
         <MaterialCommunityIcons name="bike-fast" size={80} color="#FFF" />
-        <Text style={styles.loginTitle}>FlashDelivery</Text>
+        <Text style={styles.loginTitle}>Alvuelo Delivery</Text>
         <Text style={styles.loginSubtitle}>App de Repartidores</Text>
       </View>
 
@@ -167,9 +121,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           onPress={handleLogin}
           disabled={loading}
         >
-          <Text style={styles.loginButtonText}>
-            {loading ? 'Verificando...' : 'Iniciar Sesión'}
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>

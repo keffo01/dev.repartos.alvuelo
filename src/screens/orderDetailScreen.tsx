@@ -12,6 +12,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useDriver } from '../context/driverContext';
 import { riderService } from '../services/riderService';
 
 interface OrderDetailScreenProps {
@@ -27,6 +28,8 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
   onBack,
   onCompleteOrder,
 }) => {
+  const { setDriver } = useDriver();
+
   const driverEmail = driver?.email || driver?.id;
   const orderId = initialOrder?.id || initialOrder?.orderId || driver?.currentAssignment?.orderId;
 
@@ -122,11 +125,48 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       );
 
       if (res.isFinished) {
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        // 🟢 LIMPIEZA E INICIALIZACIÓN INMEDIATA DEL ESTADO DEL REPARTIDOR
+        if (setDriver) {
+          setDriver((prevDriver: any) => ({
+            ...prevDriver,
+            currentAssignment: null, // Limpia el pedido activo
+            riderStatus: 'DISPONIBLE',
+            isOnline: true,
+            stats: {
+              ...(prevDriver?.stats || {}),
+              [todayStr]: res.stats || {
+                date: todayStr,
+                ordersToday: (prevDriver?.stats?.[todayStr]?.ordersToday || 0) + 1,
+                totalSalesToday: (prevDriver?.stats?.[todayStr]?.totalSalesToday || 0) + orderValue,
+                totalEarningsToday: (prevDriver?.stats?.[todayStr]?.totalEarningsToday || 0) + earning,
+              },
+            },
+            history: res.history || prevDriver?.history || [],
+          }));
+        }
+
         Alert.alert("¡Entrega Exitosa!", "El pedido fue finalizado y tus estadísticas fueron actualizadas.", [
-          { text: "Aceptar", onPress: onCompleteOrder }
+          {
+            text: "Aceptar",
+            onPress: () => {
+              onCompleteOrder();
+            },
+          },
         ]);
       } else {
         setCurrentStatus(nextStatus);
+
+        // Actualizar el estado intermedio en el estado local del repartidor
+        if (setDriver) {
+          setDriver((prevDriver: any) => ({
+            ...prevDriver,
+            currentAssignment: prevDriver?.currentAssignment
+              ? { ...prevDriver.currentAssignment, status: nextStatus }
+              : null,
+          }));
+        }
       }
     } catch (error) {
       Alert.alert("Error", "No se pudo actualizar el estado de la orden.");

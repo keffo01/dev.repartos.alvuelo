@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.alvuelo.alvuelodrivers"
     },
     "web": {
       "output": "static",
@@ -38,11 +39,27 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#E6F4FE",
+          "sounds": [
+            "./assets/sounds/notification_sound.mp3"
+          ]
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "939eb8b5-1253-4608-ac6d-c0c405211be0"
+      }
     }
   }
 }
