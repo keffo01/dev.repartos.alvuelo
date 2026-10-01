@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "953173376967",
+    "project_id": "alvuelo-riders",
+    "storage_bucket": "alvuelo-riders.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:953173376967:android:9479d73efacc02a724a3e2",
+        "android_client_info": {
+          "package_name": "com.alvuelo.alvuelodrivers"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6dNcK4V22CNUJtJyC-8dovk4agwUak48"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

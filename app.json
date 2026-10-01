@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.alvuelo.alvuelodrivers"
+      "package": "com.alvuelo.alvuelodrivers",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
