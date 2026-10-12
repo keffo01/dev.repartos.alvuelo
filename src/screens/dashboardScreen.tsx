@@ -179,7 +179,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       onViewActiveOrder();
     } else {
       router.push({
-        pathname: '/orderDetail',
+        pathname: '/orderDetail' as any,
         params: { orderId: currentAssignment.orderId || currentAssignment.id },
       });
     }

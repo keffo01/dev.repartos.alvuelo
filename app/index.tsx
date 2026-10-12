@@ -16,7 +16,6 @@ export default function App() {
 
   const [currentScreen, setCurrentScreen] = useState<ScreenName>('DASHBOARD');
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [orderStep, setOrderStep] = useState<number>(0);
   const [isOnline, setIsOnline] = useState<boolean>(false);
 
   // 2. Transición automática a DASHBOARD en cuanto se detecte sesión activa
@@ -35,19 +34,16 @@ export default function App() {
     setDriver(null);
     setIsOnline(false);
     setActiveOrder(null);
-    setOrderStep(0);
     setCurrentScreen('LOGIN');
   };
 
   const acceptOrder = (order: Order) => {
     setActiveOrder(order);
-    setOrderStep(1);
     setCurrentScreen('ORDER_DETAIL');
   };
 
   const completeOrder = () => {
     setActiveOrder(null);
-    setOrderStep(0);
     setCurrentScreen('DASHBOARD');
   };
 
@@ -80,8 +76,6 @@ export default function App() {
     return (
       <OrderDetailScreen
         order={effectiveOrder}
-        orderStep={orderStep}
-        setOrderStep={setOrderStep}
         driver={driver}
         onBack={() => setCurrentScreen('DASHBOARD')}
         onCompleteOrder={completeOrder}

@@ -1,15 +1,16 @@
-// src/screens/orderDetailScreen.tsx
+// src/screens/OrderDetailScreen.tsx
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDriver } from '../context/driverContext';
@@ -127,11 +128,10 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       if (res.isFinished) {
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // 🟢 LIMPIEZA E INICIALIZACIÓN INMEDIATA DEL ESTADO DEL REPARTIDOR
         if (setDriver) {
           setDriver((prevDriver: any) => ({
             ...prevDriver,
-            currentAssignment: null, // Limpia el pedido activo
+            currentAssignment: null,
             riderStatus: 'DISPONIBLE',
             isOnline: true,
             stats: {
@@ -158,7 +158,6 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       } else {
         setCurrentStatus(nextStatus);
 
-        // Actualizar el estado intermedio en el estado local del repartidor
         if (setDriver) {
           setDriver((prevDriver: any) => ({
             ...prevDriver,
@@ -189,7 +188,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Encabezado adaptable a la barra de estado */}
+      {/* Encabezado */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#2C3E50" />
@@ -227,7 +226,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* Cliente y Dirección con botón de Google Maps */}
+        {/* Cliente y Dirección */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <View style={[styles.iconBox, { backgroundColor: '#FDEDEC' }]}>
@@ -262,7 +261,6 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
               ) : null}
             </View>
             
-            {/* Botón Navegar a Google Maps */}
             <TouchableOpacity
               style={styles.mapBtn}
               onPress={() =>
@@ -279,23 +277,90 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* Lista de productos */}
+        {/* 🟢 LISTA DE PRODUCTOS CON SOPORTE COMPLETO PARA FAVORES E IMÁGENES */}
         {Array.isArray(orderDetails?.items) && orderDetails.items.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Productos ({orderDetails.items.length})</Text>
-            {orderDetails.items.map((item: any, idx: number) => (
-              <View key={item.id || idx} style={styles.itemRow}>
-                <View style={styles.itemBadge}>
-                  <Text style={styles.itemQuantity}>{item.quantity}x</Text>
+            {orderDetails.items.map((item: any, idx: number) => {
+              // Extraer datos incrustados si es un favor personalizado en el ID
+              let customData: any = {};
+              if (item.id && typeof item.id === 'string' && item.id.includes('-{')) {
+                try {
+                  const jsonStr = item.id.substring(item.id.indexOf('-') + 1);
+                  customData = JSON.parse(jsonStr);
+                } catch (e) {
+                  // Ignorar error de parseo
+                }
+              }
+
+              // Obtener la imagen de manera robusta (desde customData.images, item.images, etc.)
+              const itemImage =
+                customData.images?.[0]?.uri ||
+                item.images?.[0]?.uri ||
+                item.image ||
+                item.imageUrl ||
+                item.photo;
+
+              // Obtener la descripción completa o nombre del producto
+              const itemName =
+                customData.fullDescription ||
+                item.fullDescription ||
+                item.name ||
+                item.title ||
+                item.description ||
+                'Producto';
+
+              const options = item.selectedOptions || item.options || customData.options || [];
+              const itemNotes = item.notes || item.specialInstructions || customData.pickupLocation;
+              const itemPrice = Number(item.price || item.referencePrice || customData.referencePrice || 0);
+              const itemQty = Number(item.quantity || 1);
+
+              return (
+                <View key={item.id || idx} style={styles.itemWrapper}>
+                  <View style={styles.itemRow}>
+                    {/* Imagen del producto si existe */}
+                    {itemImage ? (
+                      <Image source={{ uri: itemImage }} style={styles.itemImage} />
+                    ) : (
+                      <View style={styles.itemBadge}>
+                        <Text style={styles.itemQuantity}>{itemQty}x</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.itemContentContainer}>
+                      <View style={styles.itemNameQtyRow}>
+                        {itemImage && (
+                          <Text style={styles.itemQtyInline}>{itemQty}x </Text>
+                        )}
+                        {/* 🟢 Se eliminó flex: 1 para que el texto haga salto de línea completo */}
+                        <Text style={styles.itemName}>
+                          {itemName}
+                        </Text>
+                      </View>
+
+                      {/* Opciones seleccionadas */}
+                      {Array.isArray(options) && options.length > 0 && (
+                        <Text style={styles.itemOptionsText}>
+                          {options.map((opt: any) => opt.name || opt).join(', ')}
+                        </Text>
+                      )}
+
+                      {/* Notas especiales o lugar de recolección */}
+                      {itemNotes ? (
+                        <Text style={styles.itemNotesText}>
+                          {customData.pickupLocation ? `Recoger en: ${itemNotes}` : `Nota: ${itemNotes}`}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.itemPrice}>
+                      ${(itemPrice * itemQty).toFixed(2)}
+                    </Text>
+                  </View>
+                  {idx < orderDetails.items.length - 1 && <View style={styles.itemDivider} />}
                 </View>
-                <Text style={styles.itemName} numberOfLines={2}>
-                  {item.name}
-                </Text>
-                <Text style={styles.itemPrice}>
-                  ${(Number(item.price) * Number(item.quantity)).toFixed(2)}
-                </Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -357,22 +422,9 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#7F8C8D',
-    fontWeight: '500',
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
+  loadingText: { marginTop: 12, fontSize: 14, color: '#7F8C8D', fontWeight: '500' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -383,19 +435,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  backBtn: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  content: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-    padding: 16,
-  },
+  backBtn: { padding: 6 },
+  headerTitle: { fontSize: 17, fontWeight: 'bold', color: '#2C3E50' },
+  content: { flex: 1, backgroundColor: '#F8F9FA', padding: 16 },
   card: {
     backgroundColor: '#FFF',
     padding: 16,
@@ -404,195 +446,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EAEAEA',
   },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 12,
-  },
-  stepperContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 6,
-  },
-  stepDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#BDC3C7',
-  },
-  stepLine: {
-    flex: 1,
-    height: 3,
-    backgroundColor: '#BDC3C7',
-  },
-  stepDone: {
-    backgroundColor: '#27AE60',
-  },
-  statusLabel: {
-    fontSize: 13,
-    color: '#7F8C8D',
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  statusBold: {
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  infoTextContainer: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#95A5A6',
-    letterSpacing: 0.5,
-  },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginTop: 2,
-  },
-  infoSub: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginTop: 2,
-  },
-  phoneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F8F5',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  phoneBtnText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#27AE60',
-    marginLeft: 4,
-  },
-  mapBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EBF5FB',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  mapBtnText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#2980B9',
-    marginLeft: 4,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    marginVertical: 12,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-  },
-  itemBadge: {
-    backgroundColor: '#F2F4F4',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  itemQuantity: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  itemName: {
-    flex: 1,
-    fontSize: 13,
-    color: '#34495E',
-  },
-  itemPrice: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  paymentMethodBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  paymentMethodText: {
-    fontSize: 13,
-    color: '#34495E',
-    marginLeft: 8,
-  },
-  financeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-  },
-  financeLabel: {
-    fontSize: 13,
-    color: '#7F8C8D',
-  },
-  financeValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  earningValue: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#27AE60',
-  },
-  totalLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  totalValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#27AE60',
-  },
-  footer: {
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  actionBtn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionBtnText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginBottom: 12 },
+  stepperContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 6 },
+  stepDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#BDC3C7' },
+  stepLine: { flex: 1, height: 3, backgroundColor: '#BDC3C7' },
+  stepDone: { backgroundColor: '#27AE60' },
+  statusLabel: { fontSize: 13, color: '#7F8C8D', textAlign: 'center', marginTop: 10 },
+  statusBold: { fontWeight: 'bold', color: '#2C3E50' },
+  infoRow: { flexDirection: 'row', alignItems: 'center' },
+  iconBox: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  infoTextContainer: { marginLeft: 12, flex: 1 },
+  infoLabel: { fontSize: 10, fontWeight: 'bold', color: '#95A5A6', letterSpacing: 0.5 },
+  infoTitle: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginTop: 2 },
+  infoSub: { fontSize: 12, color: '#7F8C8D', marginTop: 2 },
+  phoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F8F5', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  phoneBtnText: { fontSize: 12, fontWeight: 'bold', color: '#27AE60', marginLeft: 4 },
+  mapBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF5FB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  mapBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2980B9', marginLeft: 4 },
+  divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 12 },
+  itemWrapper: { marginVertical: 8 },
+  itemRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  itemImage: { width: 46, height: 46, borderRadius: 8, marginRight: 10, backgroundColor: '#F2F4F4' },
+  itemBadge: { backgroundColor: '#F2F4F4', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6, marginRight: 10, minWidth: 32, alignItems: 'center' },
+  itemQuantity: { fontSize: 12, fontWeight: 'bold', color: '#2C3E50' },
+  itemContentContainer: { flex: 1, marginRight: 8 },
+  itemNameQtyRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  itemQtyInline: { fontSize: 13, fontWeight: 'bold', color: '#27AE60' },
+  itemName: { fontSize: 13, color: '#34495E', fontWeight: '600' }, // 🟢 Se removió flex: 1 para permitir multilínea completa
+  itemOptionsText: { fontSize: 11, color: '#7F8C8D', marginTop: 2 },
+  itemNotesText: { fontSize: 11, color: '#E67E22', fontStyle: 'italic', marginTop: 2 },
+  itemPrice: { fontSize: 13, fontWeight: 'bold', color: '#2C3E50', marginLeft: 4 },
+  itemDivider: { height: 1, backgroundColor: '#F8F9FA', marginTop: 10 },
+  paymentMethodBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 10, borderRadius: 8, marginBottom: 12 },
+  paymentMethodText: { fontSize: 13, color: '#34495E', marginLeft: 8 },
+  financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 },
+  financeLabel: { fontSize: 13, color: '#7F8C8D' },
+  financeValue: { fontSize: 13, fontWeight: '600', color: '#2C3E50' },
+  earningValue: { fontSize: 13, fontWeight: 'bold', color: '#27AE60' },
+  totalLabel: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50' },
+  totalValue: { fontSize: 16, fontWeight: 'bold', color: '#27AE60' },
+  footer: { padding: 16, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  actionBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  btnContent: { flexDirection: 'row', alignItems: 'center' },
+  actionBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
 });
+
+export default OrderDetailScreen;
