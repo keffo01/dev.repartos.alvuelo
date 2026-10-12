@@ -24,6 +24,8 @@ interface DashboardScreenProps {
   onLogout?: () => void;
 }
 
+const ITEMS_PER_PAGE = 5; // Cantidad de elementos a mostrar por página en el historial
+
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onViewActiveOrder,
   onLogout,
@@ -34,19 +36,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
+  const [historyPage, setHistoryPage] = useState<number>(1);
 
   // Email/ID del repartidor
   const driverEmail = driver?.email || driver?.id;
 
-  // 🟢 CORRECCIÓN 1: Manejo del estado En Línea
-  // Mantiene al repartidor "DISPONIBLE/EN LÍNEA" mientras isOnline sea true o riderStatus no sea FUERA_DE_LINEA
+  // Manejo del estado En Línea
   const riderStatus = driver?.riderStatus || 'FUERA_DE_LINEA';
   const isOnline =
     driver?.isOnline !== undefined
       ? Boolean(driver.isOnline)
       : riderStatus !== 'FUERA_DE_LINEA' && riderStatus !== 'INACTIVO';
 
-  // 🟢 CORRECCIÓN 2: Validar si existe una asignación activa (descarta objetos vacíos {} y entregados)
+  // Validar si existe una asignación activa
   const hasActiveAssignment = (assignment: any) => {
     if (!assignment) return false;
     if (typeof assignment === 'object' && Object.keys(assignment).length === 0) return false;
@@ -63,7 +65,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     ? driver.currentAssignment
     : null;
 
-  // 🟢 CORRECCIÓN 3: Extracción de Stats (Soporta Lista por Fecha o Mapa/Objeto directo)
+  // Extracción de Stats
   const getTodayStats = (statsData: any) => {
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -71,7 +73,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       return { ordersToday: 0, totalEarningsToday: '0.00', totalSalesToday: '0.00' };
     }
 
-    // Si stats es una Lista / Arreglo por fecha
     if (Array.isArray(statsData)) {
       const todayStat =
         statsData.find((item: any) => item.date === todayStr) ||
@@ -84,7 +85,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       };
     }
 
-    // Si stats es un Mapa/Objeto indexado por fecha
     if (statsData[todayStr]) {
       const todayStat = statsData[todayStr];
       return {
@@ -94,7 +94,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       };
     }
 
-    // Si es un objeto de estadísticas acumuladas
     return {
       ordersToday: statsData.ordersToday || 0,
       totalEarningsToday: Number(statsData.totalEarningsToday || 0).toFixed(2),
@@ -104,10 +103,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   const { ordersToday, totalEarningsToday, totalSalesToday } = getTodayStats(driver?.stats);
 
-  // 🟢 CORRECCIÓN 4: Lista del histórico de entregas
+  // Lista del histórico de entregas y cálculo de paginación
   const historyList: any[] = Array.isArray(driver?.history) ? driver.history : [];
+  const totalPages = Math.ceil(historyList.length / ITEMS_PER_PAGE);
+  const paginatedHistory = historyList.slice(0, historyPage * ITEMS_PER_PAGE);
 
-  // 2. Consulta del perfil actualizado
+  // Consulta del perfil actualizado
   const fetchProfile = useCallback(async () => {
     if (!driverEmail) return;
     try {
@@ -126,7 +127,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     setRefreshing(false);
   };
 
-  // 3. Polling automático cuando está en línea y no tiene orden activa
+  // Polling automático cuando está en línea y no tiene orden activa
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
@@ -141,7 +142,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     };
   }, [isOnline, currentAssignment, fetchProfile]);
 
-  // 4. Conmutar disponibilidad
+  // Conmutar disponibilidad
   const toggleRiderStatus = async () => {
     if (currentAssignment) {
       Alert.alert(
@@ -170,7 +171,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     }
   };
 
-  // 5. Ir al detalle del pedido
+  // Ir al detalle del pedido
   const handleGoToOrderDetail = () => {
     if (!currentAssignment) return;
 
@@ -220,6 +221,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
       <ScrollView
         style={styles.container}
+        contentContainerStyle={styles.scrollContent} // 🟢 Padding inferior agregado aquí para evitar solapamientos
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#27AE60']} />
@@ -257,7 +259,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         <Text style={styles.sectionTitle}>Estado de Asignación</Text>
 
         {currentAssignment ? (
-          /* Pedido Asignado Activo */
           <View style={styles.assignmentCard}>
             <View style={styles.assignmentHeader}>
               <View style={styles.badgeActive}>
@@ -280,7 +281,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </TouchableOpacity>
           </View>
         ) : isOnline ? (
-          /* En Espera (Polling activo) */
           <View style={styles.waitingCard}>
             <ActivityIndicator size="large" color="#27AE60" style={{ marginBottom: 12 }} />
             <Text style={styles.waitingTitle}>Buscando pedidos en tiempo real...</Text>
@@ -289,7 +289,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </Text>
           </View>
         ) : (
-          /* Fuera de Línea */
           <View style={styles.offlineCard}>
             <Ionicons name="moon-outline" size={36} color="#7F8C8D" style={{ marginBottom: 8 }} />
             <Text style={styles.offlineTitle}>Estás Fuera de Línea</Text>
@@ -300,11 +299,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         )}
 
         {/* HISTÓRICO DE ENTREGAS */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Histórico de Entregas</Text>
+        <View style={styles.historySectionHeader}>
+          <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 0 }]}>Histórico de Entregas</Text>
+          {historyList.length > 0 && (
+            <Text style={styles.historyCountText}>({historyList.length} en total)</Text>
+          )}
+        </View>
 
         {historyList.length > 0 ? (
           <View style={styles.historyContainer}>
-            {historyList.map((item: any, index: number) => (
+            {paginatedHistory.map((item: any, index: number) => (
               <View key={item.id || item.orderId || index} style={styles.historyCard}>
                 <View style={styles.historyHeader}>
                   <Text style={styles.historyOrderId}>#{item.orderId || item.id}</Text>
@@ -336,6 +340,27 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 </View>
               </View>
             ))}
+
+            {/* Controles de Paginación */}
+            <View style={styles.paginationControls}>
+              {historyPage < totalPages && (
+                <TouchableOpacity
+                  style={styles.pageButton}
+                  onPress={() => setHistoryPage((prev) => prev + 1)}
+                >
+                  <Text style={styles.pageButtonText}>Cargar más (+{ITEMS_PER_PAGE})</Text>
+                </TouchableOpacity>
+              )}
+
+              {historyPage > 1 && (
+                <TouchableOpacity
+                  style={[styles.pageButton, styles.resetPageButton]}
+                  onPress={() => setHistoryPage(1)}
+                >
+                  <Text style={styles.resetButtonText}>Mostrar menos</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         ) : (
           <View style={styles.emptyHistoryCard}>
@@ -371,7 +396,8 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 11, fontWeight: 'bold', marginRight: 6 },
   textAvailable: { color: '#27AE60' },
   textOffline: { color: '#7F8C8D' },
-  container: { flex: 1, backgroundColor: '#F8F9FA', padding: 16 },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  scrollContent: { padding: 16, paddingBottom: 50 }, // 🟢 Espacio extra al final para que la botonera respire
   statsCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
@@ -448,6 +474,8 @@ const styles = StyleSheet.create({
   },
   offlineTitle: { fontSize: 15, fontWeight: 'bold', color: '#7F8C8D' },
   offlineSub: { fontSize: 12, color: '#95A5A6', textAlign: 'center', marginTop: 4, lineHeight: 18 },
+  historySectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  historyCountText: { fontSize: 12, color: '#7F8C8D', fontWeight: '600' },
   historyContainer: { gap: 10, marginBottom: 24 },
   historyCard: {
     backgroundColor: '#FFF',
@@ -487,4 +515,21 @@ const styles = StyleSheet.create({
   },
   emptyHistoryTitle: { fontSize: 14, fontWeight: 'bold', color: '#7F8C8D' },
   emptyHistorySub: { fontSize: 12, color: '#BDC3C7', textAlign: 'center', marginTop: 2 },
+  paginationControls: {
+    marginTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  pageButton: {
+    backgroundColor: '#2C3E50',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    flex: 1,
+    alignItems: 'center',
+  },
+  pageButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
+  resetPageButton: { backgroundColor: '#95A5A6' },
+  resetButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
 });
