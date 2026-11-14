@@ -54,9 +54,11 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       try {
         setLoadingOrder(true);
         const data = await riderService.getOrderDetails(orderId);
+        console.log("🚀 OrderDetails cargados:", data);
         setOrderDetails(data);
-        if (data.status) {
-          setCurrentStatus(normalizeStatus(data.status));
+        const statusToEval = data?.status || data?.orderStatus;
+        if (statusToEval) {
+          setCurrentStatus(normalizeStatus(statusToEval));
         }
       } catch (error) {
         console.error("Error al obtener la orden:", error);
@@ -186,6 +188,26 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     );
   }
 
+  // Extracción directa de la data formateada por el Lambda
+  const customerName = orderDetails?.customerName || 'Cliente';
+  const customerPhone = orderDetails?.customerPhone;
+  const deliveryAddress = orderDetails?.deliveryAddress || 'Sin dirección especificada';
+  const deliveryFee = Number(orderDetails?.deliveryFee || 0);
+  const subtotal = Number(orderDetails?.subtotal || 0);
+  const grandTotal = Number(orderDetails?.totalAmount || 0);
+  const paymentMethod = orderDetails?.paymentMethod || 'cash';
+  const restaurantName = orderDetails?.restaurantName || 'Comercio Alvuelo';
+  const itemsList = Array.isArray(orderDetails?.items) ? orderDetails.items : [];
+  
+  // Imágenes S3
+  const rawImages = orderDetails?.images || [];
+  const s3Images = rawImages.map((img: any) => {
+    if (typeof img === 'string') return img;
+    return img?.publicUrl || img?.uri || null;
+  }).filter(Boolean);
+
+  const isCustomFavor = orderDetails?.restaurantId === 'servicio_personalizado';
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       {/* Encabezado */}
@@ -213,15 +235,15 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </Text>
         </View>
 
-        {/* Comercio */}
+        {/* Comercio / Restaurante o Tipo de Servicio */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <View style={[styles.iconBox, { backgroundColor: '#FDF2E9' }]}>
-              <Ionicons name="restaurant-outline" size={22} color="#E67E22" />
+              <Ionicons name={isCustomFavor ? "cube-outline" : "storefront-outline"} size={22} color="#E67E22" />
             </View>
             <View style={styles.infoTextContainer}>
-              <Text style={styles.infoLabel}>COMERCIO</Text>
-              <Text style={styles.infoTitle}>{orderDetails?.restaurantName || 'Comercio Alvuelo'}</Text>
+              <Text style={styles.infoLabel}>{isCustomFavor ? 'TIPO DE SERVICIO' : 'COMERCIO / RESTAURANTE'}</Text>
+              <Text style={styles.infoTitle}>{isCustomFavor ? 'Mandaditos / Favor Personalizado' : restaurantName}</Text>
             </View>
           </View>
         </View>
@@ -234,12 +256,12 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             </View>
             <View style={styles.infoTextContainer}>
               <Text style={styles.infoLabel}>CLIENTE</Text>
-              <Text style={styles.infoTitle}>{orderDetails?.customerName || 'Cliente'}</Text>
+              <Text style={styles.infoTitle}>{customerName}</Text>
             </View>
-            {orderDetails?.customerPhone ? (
+            {customerPhone ? (
               <TouchableOpacity
                 style={styles.phoneBtn}
-                onPress={() => handleCallCustomer(orderDetails.customerPhone)}
+                onPress={() => handleCallCustomer(customerPhone)}
               >
                 <Ionicons name="call-outline" size={16} color="#27AE60" />
                 <Text style={styles.phoneBtnText}>Llamar</Text>
@@ -255,21 +277,12 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             </View>
             <View style={styles.infoTextContainer}>
               <Text style={styles.infoLabel}>DIRECCIÓN DE ENTREGA</Text>
-              <Text style={styles.infoTitle}>{orderDetails?.deliveryAddress || 'Sin dirección especificada'}</Text>
-              {orderDetails?.reference ? (
-                <Text style={styles.infoSub}>Ref: {orderDetails.reference}</Text>
-              ) : null}
+              <Text style={styles.infoTitle}>{deliveryAddress}</Text>
             </View>
             
             <TouchableOpacity
               style={styles.mapBtn}
-              onPress={() =>
-                handleOpenMaps(
-                  orderDetails?.latitude,
-                  orderDetails?.longitude,
-                  orderDetails?.deliveryAddress
-                )
-              }
+              onPress={() => handleOpenMaps(orderDetails?.latitude, orderDetails?.longitude, deliveryAddress)}
             >
               <Ionicons name="navigate-outline" size={16} color="#2980B9" />
               <Text style={styles.mapBtnText}>Navegar</Text>
@@ -277,130 +290,102 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* 🟢 LISTA DE PRODUCTOS CON SOPORTE COMPLETO PARA FAVORES E IMÁGENES */}
-        {Array.isArray(orderDetails?.items) && orderDetails.items.length > 0 && (
+        {/* 🟢 DETALLE DEL PEDIDO Y COMPLEMENTOS */}
+        {Array.isArray(itemsList) && itemsList.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Productos ({orderDetails.items.length})</Text>
-            {orderDetails.items.map((item: any, idx: number) => {
-              // Extraer datos incrustados si es un favor personalizado en el ID
-              let customData: any = {};
-              if (item.id && typeof item.id === 'string' && item.id.includes('-{')) {
-                try {
-                  const jsonStr = item.id.substring(item.id.indexOf('-') + 1);
-                  customData = JSON.parse(jsonStr);
-                } catch (e) {
-                  // Ignorar error de parseo
-                }
-              }
+            <Text style={styles.cardTitle}>Detalle del Pedido ({itemsList.length})</Text>
+            
+            {!isCustomFavor && restaurantName ? (
+              <Text style={styles.restaurantHeaderTitle}>🏪 {restaurantName}</Text>
+            ) : null}
 
-              // Obtener la imagen de manera robusta (desde customData.images, item.images, etc.)
-              const itemImage =
-                customData.images?.[0]?.uri ||
-                item.images?.[0]?.uri ||
-                item.image ||
-                item.imageUrl ||
-                item.photo;
-
-              // Obtener la descripción completa o nombre del producto
-              const itemName =
-                customData.fullDescription ||
-                item.fullDescription ||
-                item.name ||
-                item.title ||
-                item.description ||
-                'Producto';
-
-              const options = item.selectedOptions || item.options || customData.options || [];
-              const itemNotes = item.notes || item.specialInstructions || customData.pickupLocation;
-              const itemPrice = Number(item.price || item.referencePrice || customData.referencePrice || 0);
+            {itemsList.map((item: any, idx: number) => {
+              const itemName = item.name || 'Producto';
               const itemQty = Number(item.quantity || 1);
+              const itemPrice = Number(item.price || 0);
+
+              // Procesar el objeto details (ej: {"Complemento1": "Arroz", "Complemento2": "Ensalada Fresca"})
+              const details = item.details || {};
+              const detailEntries = typeof details === 'object' && details !== null ? Object.entries(details) : [];
 
               return (
-                <View key={item.id || idx} style={styles.itemWrapper}>
-                  <View style={styles.itemRow}>
-                    {/* Imagen del producto si existe */}
-                    {itemImage ? (
-                      <Image source={{ uri: itemImage }} style={styles.itemImage} />
-                    ) : (
-                      <View style={styles.itemBadge}>
-                        <Text style={styles.itemQuantity}>{itemQty}x</Text>
-                      </View>
-                    )}
-
-                    <View style={styles.itemContentContainer}>
-                      <View style={styles.itemNameQtyRow}>
-                        {itemImage && (
-                          <Text style={styles.itemQtyInline}>{itemQty}x </Text>
-                        )}
-                        {/* 🟢 Se eliminó flex: 1 para que el texto haga salto de línea completo */}
-                        <Text style={styles.itemName}>
-                          {itemName}
-                        </Text>
-                      </View>
-
-                      {/* Opciones seleccionadas */}
-                      {Array.isArray(options) && options.length > 0 && (
-                        <Text style={styles.itemOptionsText}>
-                          {options.map((opt: any) => opt.name || opt).join(', ')}
-                        </Text>
-                      )}
-
-                      {/* Notas especiales o lugar de recolección */}
-                      {itemNotes ? (
-                        <Text style={styles.itemNotesText}>
-                          {customData.pickupLocation ? `Recoger en: ${itemNotes}` : `Nota: ${itemNotes}`}
-                        </Text>
-                      ) : null}
+                <View key={idx} style={styles.itemContainer}>
+                  <View style={styles.itemHeaderRow}>
+                    <View style={styles.qtyBadge}>
+                      <Text style={styles.qtyText}>{itemQty}x</Text>
                     </View>
-
-                    <Text style={styles.itemPrice}>
-                      ${(itemPrice * itemQty).toFixed(2)}
-                    </Text>
+                    <Text style={styles.itemNameText}>{itemName}</Text>
+                    <Text style={styles.itemPriceText}>${(itemPrice * itemQty).toFixed(2)}</Text>
                   </View>
-                  {idx < orderDetails.items.length - 1 && <View style={styles.itemDivider} />}
+
+                  {/* 🟢 Renderizar complementos u opciones detalladas (Arroz, Ensalada, etc.) */}
+                  {detailEntries.length > 0 && (
+                    <View style={styles.detailsBox}>
+                      {detailEntries.map(([key, value], dIdx) => (
+                        <Text key={dIdx} style={styles.detailItemText}>
+                          • <Text style={{ color: '#7F8C8D' }}>{key}:</Text> <Text style={{ fontWeight: '700', color: '#2C3E50' }}>{String(value)}</Text>
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {idx < itemsList.length - 1 && <View style={styles.itemInnerDivider} />}
                 </View>
               );
             })}
           </View>
         )}
 
-        {/* Resumen financiero */}
+        {/* 🟢 IMÁGENES ADJUNTAS DESDE S3 (Si las hay) */}
+        {Array.isArray(s3Images) && s3Images.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Imágenes Adjuntas ({s3Images.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
+              {s3Images.map((imgUri: string, imgIdx: number) => (
+                <Image
+                  key={imgIdx}
+                  source={{ uri: imgUri }}
+                  style={styles.itemImageThumbnail}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Resumen Financiero */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Resumen de Pago</Text>
           
           <View style={styles.paymentMethodBox}>
-            <Ionicons
-              name={orderDetails?.paymentMethod === 'cash' ? 'cash-outline' : 'card-outline'}
-              size={20}
-              color={orderDetails?.paymentMethod === 'cash' ? '#27AE60' : '#2980B9'}
-            />
+            <Ionicons name="cash-outline" size={20} color="#27AE60" />
             <Text style={styles.paymentMethodText}>
               Método de pago: <Text style={{ fontWeight: 'bold' }}>
-                {orderDetails?.paymentMethod === 'cash' ? 'Efectivo (Cobrar al entregar)' : 'Tarjeta / Pagado'}
+                {paymentMethod === 'cash' ? 'Efectivo (Cobrar al entregar)' : 'Tarjeta / Pagado'}
               </Text>
             </Text>
           </View>
 
           <View style={styles.financeRow}>
             <Text style={styles.financeLabel}>Subtotal productos:</Text>
-            <Text style={styles.financeValue}>${Number(orderDetails?.subtotal || 0).toFixed(2)}</Text>
+            <Text style={styles.financeValue}>${subtotal.toFixed(2)}</Text>
           </View>
 
           <View style={styles.financeRow}>
             <Text style={styles.financeLabel}>Envío / Ganancia flete:</Text>
-            <Text style={styles.earningValue}>+${Number(orderDetails?.deliveryFee || 0).toFixed(2)}</Text>
+            <Text style={styles.earningValue}>+${deliveryFee.toFixed(2)}</Text>
           </View>
 
           <View style={styles.divider} />
 
           <View style={styles.financeRow}>
             <Text style={styles.totalLabel}>TOTAL A COBRAR:</Text>
-            <Text style={styles.totalValue}>${Number(orderDetails?.totalAmount || 0).toFixed(2)}</Text>
+            <Text style={styles.totalValue}>${grandTotal.toFixed(2)}</Text>
           </View>
         </View>
       </ScrollView>
 
-      {/* Botón flotante para avanzar de estado */}
+      {/* Botón Inferior de Estado */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: color }]}
@@ -458,25 +443,23 @@ const styles = StyleSheet.create({
   infoTextContainer: { marginLeft: 12, flex: 1 },
   infoLabel: { fontSize: 10, fontWeight: 'bold', color: '#95A5A6', letterSpacing: 0.5 },
   infoTitle: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginTop: 2 },
-  infoSub: { fontSize: 12, color: '#7F8C8D', marginTop: 2 },
   phoneBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F8F5', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   phoneBtnText: { fontSize: 12, fontWeight: 'bold', color: '#27AE60', marginLeft: 4 },
   mapBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF5FB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   mapBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2980B9', marginLeft: 4 },
   divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 12 },
-  itemWrapper: { marginVertical: 8 },
-  itemRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  itemImage: { width: 46, height: 46, borderRadius: 8, marginRight: 10, backgroundColor: '#F2F4F4' },
-  itemBadge: { backgroundColor: '#F2F4F4', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6, marginRight: 10, minWidth: 32, alignItems: 'center' },
-  itemQuantity: { fontSize: 12, fontWeight: 'bold', color: '#2C3E50' },
-  itemContentContainer: { flex: 1, marginRight: 8 },
-  itemNameQtyRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  itemQtyInline: { fontSize: 13, fontWeight: 'bold', color: '#27AE60' },
-  itemName: { fontSize: 13, color: '#34495E', fontWeight: '600' }, // 🟢 Se removió flex: 1 para permitir multilínea completa
-  itemOptionsText: { fontSize: 11, color: '#7F8C8D', marginTop: 2 },
-  itemNotesText: { fontSize: 11, color: '#E67E22', fontStyle: 'italic', marginTop: 2 },
-  itemPrice: { fontSize: 13, fontWeight: 'bold', color: '#2C3E50', marginLeft: 4 },
-  itemDivider: { height: 1, backgroundColor: '#F8F9FA', marginTop: 10 },
+  restaurantHeaderTitle: { fontSize: 13, fontWeight: 'bold', color: '#E67E22', marginBottom: 10 },
+  itemContainer: { marginVertical: 4 },
+  itemHeaderRow: { flexDirection: 'row', alignItems: 'center' },
+  qtyBadge: { backgroundColor: '#E8F8F5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
+  qtyText: { fontSize: 12, fontWeight: 'bold', color: '#27AE60' },
+  itemNameText: { fontSize: 14, fontWeight: '600', color: '#2C3E50', flex: 1 },
+  itemPriceText: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50' },
+  detailsBox: { backgroundColor: '#F8F9FA', padding: 8, borderRadius: 8, marginTop: 6, marginLeft: 28 },
+  detailItemText: { fontSize: 12, color: '#34495E', marginVertical: 2 },
+  imagesScroll: { flexDirection: 'row', marginVertical: 4 },
+  itemImageThumbnail: { width: 80, height: 80, borderRadius: 8, marginRight: 8, backgroundColor: '#F2F4F4' },
+  itemInnerDivider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 8 },
   paymentMethodBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 10, borderRadius: 8, marginBottom: 12 },
   paymentMethodText: { fontSize: 13, color: '#34495E', marginLeft: 8 },
   financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 },
