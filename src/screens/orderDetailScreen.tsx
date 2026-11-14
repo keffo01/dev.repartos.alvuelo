@@ -188,7 +188,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     );
   }
 
-  // Extracción directa de la data formateada por el Lambda
+  // Extracción de datos
   const customerName = orderDetails?.customerName || 'Cliente';
   const customerPhone = orderDetails?.customerPhone;
   const deliveryAddress = orderDetails?.deliveryAddress || 'Sin dirección especificada';
@@ -199,14 +199,52 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
   const restaurantName = orderDetails?.restaurantName || 'Comercio Alvuelo';
   const itemsList = Array.isArray(orderDetails?.items) ? orderDetails.items : [];
   
-  // Imágenes S3
-  const rawImages = orderDetails?.images || [];
+  const isCustomFavor = orderDetails?.restaurantId === 'servicio_personalizado' || restaurantName.toLowerCase().includes('mandadito');
+
+  // Recolectar e inspeccionar imágenes S3
+  const rawImages = [
+    ...(Array.isArray(orderDetails?.images) ? orderDetails.images : []),
+    ...(Array.isArray(orderDetails?.orderData?.images) ? orderDetails.orderData.images : []),
+  ];
+  itemsList.forEach((item: any) => {
+    if (Array.isArray(item.images)) rawImages.push(...item.images);
+    if (item.details?.images && Array.isArray(item.details.images)) rawImages.push(...item.details.images);
+  });
+
   const s3Images = rawImages.map((img: any) => {
+    if (!img) return null;
     if (typeof img === 'string') return img;
-    return img?.publicUrl || img?.uri || null;
+    if (img.publicUrl) return img.publicUrl;
+    if (img.uri && img.uri.startsWith('http')) return img.uri;
+    if (img.fileName && orderId) {
+      const lastDot = img.fileName.lastIndexOf('.');
+      const nameWithoutExt = lastDot !== -1 ? img.fileName.substring(0, lastDot) : img.fileName;
+      return `https://alvuelo-bucket.s3.us-east-2.amazonaws.com/mandaditos/${nameWithoutExt}_${orderId}.jpg`;
+    }
+    return null;
   }).filter(Boolean);
 
-  const isCustomFavor = orderDetails?.restaurantId === 'servicio_personalizado';
+  const uniqueImages = Array.from(new Set(s3Images));
+
+  // Formateador de etiquetas legibles para los detalles
+  const formatDetailLabel = (key: string) => {
+    switch (key) {
+      case 'pickupLocation':
+        return 'Lugar de recolección';
+      case 'fullDescription':
+        return 'Descripción';
+      case 'referencePrice':
+        return 'Precio estimado';
+      case 'mapsUrl':
+        return 'Enlace de mapa';
+      case 'Complemento1':
+        return 'Complemento 1';
+      case 'Complemento2':
+        return 'Complemento 2';
+      default:
+        return key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
@@ -235,7 +273,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </Text>
         </View>
 
-        {/* Comercio / Restaurante o Tipo de Servicio */}
+        {/* Tipo de Servicio / Comercio */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <View style={[styles.iconBox, { backgroundColor: '#FDF2E9' }]}>
@@ -290,7 +328,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* 🟢 DETALLE DEL PEDIDO Y COMPLEMENTOS */}
+        {/* 🟢 DETALLE DEL PEDIDO (Ocultando únicamente isCustomFavor y mostrando etiquetas legibles) */}
         {Array.isArray(itemsList) && itemsList.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Detalle del Pedido ({itemsList.length})</Text>
@@ -304,9 +342,13 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
               const itemQty = Number(item.quantity || 1);
               const itemPrice = Number(item.price || 0);
 
-              // Procesar el objeto details (ej: {"Complemento1": "Arroz", "Complemento2": "Ensalada Fresca"})
               const details = item.details || {};
-              const detailEntries = typeof details === 'object' && details !== null ? Object.entries(details) : [];
+              // Solo ocultamos isCustomFavor, los demás detalles se muestran con etiquetas formateadas
+              const hiddenKeys = ['isCustomFavor'];
+              
+              const detailEntries = typeof details === 'object' && details !== null 
+                ? Object.entries(details).filter(([key]) => !hiddenKeys.includes(key)) 
+                : [];
 
               return (
                 <View key={idx} style={styles.itemContainer}>
@@ -318,12 +360,11 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
                     <Text style={styles.itemPriceText}>${(itemPrice * itemQty).toFixed(2)}</Text>
                   </View>
 
-                  {/* 🟢 Renderizar complementos u opciones detalladas (Arroz, Ensalada, etc.) */}
                   {detailEntries.length > 0 && (
                     <View style={styles.detailsBox}>
                       {detailEntries.map(([key, value], dIdx) => (
                         <Text key={dIdx} style={styles.detailItemText}>
-                          • <Text style={{ color: '#7F8C8D' }}>{key}:</Text> <Text style={{ fontWeight: '700', color: '#2C3E50' }}>{String(value)}</Text>
+                          • <Text style={{ color: '#7F8C8D' }}>{formatDetailLabel(key)}:</Text> <Text style={{ fontWeight: '700', color: '#2C3E50' }}>{String(value)}</Text>
                         </Text>
                       ))}
                     </View>
@@ -336,12 +377,12 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         )}
 
-        {/* 🟢 IMÁGENES ADJUNTAS DESDE S3 (Si las hay) */}
-        {Array.isArray(s3Images) && s3Images.length > 0 && (
+        {/* 🟢 IMÁGENES ADJUNTAS DESDE S3 */}
+        {Array.isArray(uniqueImages) && uniqueImages.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Imágenes Adjuntas ({s3Images.length})</Text>
+            <Text style={styles.cardTitle}>Imágenes Adjuntas ({uniqueImages.length})</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
-              {s3Images.map((imgUri: string, imgIdx: number) => (
+              {uniqueImages.map((imgUri: string, imgIdx: number) => (
                 <Image
                   key={imgIdx}
                   source={{ uri: imgUri }}
