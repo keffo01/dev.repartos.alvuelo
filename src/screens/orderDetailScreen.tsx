@@ -4,8 +4,10 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   Linking,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDriver } from '../context/driverContext';
 import { riderService } from '../services/riderService';
+
+const { width, height } = Dimensions.get('window');
 
 interface OrderDetailScreenProps {
   order?: any;
@@ -38,6 +42,9 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
   const [loadingOrder, setLoadingOrder] = useState<boolean>(true);
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
   const [currentStatus, setCurrentStatus] = useState<string>('INICIADO');
+
+  // 🟢 Estado para controlar la imagen seleccionada en pantalla completa
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   // Normalizar el estado 'asignada' a 'INICIADO'
   const normalizeStatus = (rawStatus: string) => {
@@ -197,8 +204,8 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
   const grandTotal = Number(orderDetails?.totalAmount || 0);
   const paymentMethod = orderDetails?.paymentMethod || 'cash';
   const restaurantName = orderDetails?.restaurantName || 'Comercio Alvuelo';
-  const itemsList = Array.isArray(orderDetails?.items) ? orderDetails.items : [];
   
+  const itemsList = Array.isArray(orderDetails?.items) ? orderDetails.items : [];
   const isCustomFavor = orderDetails?.restaurantId === 'servicio_personalizado' || restaurantName.toLowerCase().includes('mandadito');
 
   // Recolectar e inspeccionar imágenes S3
@@ -226,7 +233,6 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 
   const uniqueImages = Array.from(new Set(s3Images));
 
-  // Formateador de etiquetas legibles para los detalles
   const formatDetailLabel = (key: string) => {
     switch (key) {
       case 'pickupLocation':
@@ -281,7 +287,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             </View>
             <View style={styles.infoTextContainer}>
               <Text style={styles.infoLabel}>{isCustomFavor ? 'TIPO DE SERVICIO' : 'COMERCIO / RESTAURANTE'}</Text>
-              <Text style={styles.infoTitle}>{isCustomFavor ? 'Mandaditos / Favor Personalizado' : restaurantName}</Text>
+              <Text style={styles.infoTitle}>{restaurantName}</Text>
             </View>
           </View>
         </View>
@@ -328,67 +334,112 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </View>
         </View>
 
-        {/* 🟢 DETALLE DEL PEDIDO (Ocultando únicamente isCustomFavor y mostrando etiquetas legibles) */}
+        {/* Detalle del Pedido */}
         {Array.isArray(itemsList) && itemsList.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Detalle del Pedido ({itemsList.length})</Text>
-            
-            {!isCustomFavor && restaurantName ? (
-              <Text style={styles.restaurantHeaderTitle}>🏪 {restaurantName}</Text>
-            ) : null}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.cardTitle}>Detalle del Pedido ({itemsList.length})</Text>
+              {itemsList.length > 1 && (
+                <Text style={styles.swipeHint}>Desliza para ver más →</Text>
+              )}
+            </View>
 
-            {itemsList.map((item: any, idx: number) => {
-              const itemName = item.name || 'Producto';
-              const itemQty = Number(item.quantity || 1);
-              const itemPrice = Number(item.price || 0);
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              contentContainerStyle={styles.itemsHorizontalScroll}
+            >
+              {itemsList.map((item: any, idx: number) => {
+                const itemName = item.name || 'Producto';
+                const itemQty = Number(item.quantity || 1);
+                const itemPrice = Number(item.price || 0);
+                const itemRestaurant = item.restaurantName || restaurantName;
 
-              const details = item.details || {};
-              // Solo ocultamos isCustomFavor, los demás detalles se muestran con etiquetas formateadas
-              const hiddenKeys = ['isCustomFavor'];
-              
-              const detailEntries = typeof details === 'object' && details !== null 
-                ? Object.entries(details).filter(([key]) => !hiddenKeys.includes(key)) 
-                : [];
+                const details = item.details || {};
+                const hiddenKeys = ['isCustomFavor'];
+                
+                const detailEntries = typeof details === 'object' && details !== null 
+                  ? Object.entries(details).filter(([key, val]) => !hiddenKeys.includes(key) && val !== '' && val !== null && val !== undefined) 
+                  : [];
 
-              return (
-                <View key={idx} style={styles.itemContainer}>
-                  <View style={styles.itemHeaderRow}>
-                    <View style={styles.qtyBadge}>
-                      <Text style={styles.qtyText}>{itemQty}x</Text>
+                return (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.itemCardSlide,
+                      itemsList.length === 1 && { width: '100%', marginRight: 0 }
+                    ]}
+                  >
+                    <Text style={styles.restaurantHeaderTitle}>🏪 {itemRestaurant}</Text>
+
+                    <View style={styles.itemHeaderRow}>
+                      <View style={styles.qtyBadge}>
+                        <Text style={styles.qtyText}>{itemQty}x</Text>
+                      </View>
+                      <Text style={styles.itemNameText}>{itemName}</Text>
+                      <Text style={styles.itemPriceText}>${(itemPrice * itemQty).toFixed(2)}</Text>
                     </View>
-                    <Text style={styles.itemNameText}>{itemName}</Text>
-                    <Text style={styles.itemPriceText}>${(itemPrice * itemQty).toFixed(2)}</Text>
+
+                    {detailEntries.length > 0 && (
+                      <ScrollView
+                        style={styles.detailsScrollBox}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {detailEntries.map(([key, value], dIdx) => {
+                          const isMapLink = key === 'mapsUrl' || (typeof value === 'string' && value.startsWith('http'));
+
+                          return (
+                            <View key={dIdx} style={styles.detailRow}>
+                              <Text style={styles.detailItemText}>
+                                • <Text style={{ color: '#7F8C8D' }}>{formatDetailLabel(key)}:</Text>{' '}
+                              </Text>
+
+                              {isMapLink ? (
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    Linking.openURL(String(value)).catch(() => {
+                                      Alert.alert("Error", "No se pudo abrir el enlace del mapa.");
+                                    });
+                                  }}
+                                >
+                                  <Text style={styles.mapLinkText}>Abrir en Mapa 🗺️</Text>
+                                </TouchableOpacity>
+                              ) : (
+                                <Text style={{ fontWeight: '700', color: '#2C3E50', flex: 1 }}>
+                                  {key === 'referencePrice' ? `$${Number(value).toFixed(2)}` : String(value)}
+                                </Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
                   </View>
-
-                  {detailEntries.length > 0 && (
-                    <View style={styles.detailsBox}>
-                      {detailEntries.map(([key, value], dIdx) => (
-                        <Text key={dIdx} style={styles.detailItemText}>
-                          • <Text style={{ color: '#7F8C8D' }}>{formatDetailLabel(key)}:</Text> <Text style={{ fontWeight: '700', color: '#2C3E50' }}>{String(value)}</Text>
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-
-                  {idx < itemsList.length - 1 && <View style={styles.itemInnerDivider} />}
-                </View>
-              );
-            })}
+                );
+              })}
+            </ScrollView>
           </View>
         )}
 
-        {/* 🟢 IMÁGENES ADJUNTAS DESDE S3 */}
+        {/* 🟢 IMÁGENES ADJUNTAS CON SOPORTE DE TAW / PANTALLA COMPLETA */}
         {Array.isArray(uniqueImages) && uniqueImages.length > 0 && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Imágenes Adjuntas ({uniqueImages.length})</Text>
+            <Text style={styles.cardTitle}>Imágenes Adjuntas ({uniqueImages.length}) - Toca para ampliar</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
               {uniqueImages.map((imgUri: string, imgIdx: number) => (
-                <Image
+                <TouchableOpacity
                   key={imgIdx}
-                  source={{ uri: imgUri }}
-                  style={styles.itemImageThumbnail}
-                  resizeMode="cover"
-                />
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedImage(imgUri)}
+                >
+                  <Image
+                    source={{ uri: imgUri }}
+                    style={styles.itemImageThumbnail}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
@@ -443,6 +494,31 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           )}
         </TouchableOpacity>
       </View>
+
+      {/* 🟢 MODAL DE PANTALLA COMPLETA PARA LA IMAGEN SELECCIONADA */}
+      <Modal
+        visible={selectedImage !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+      >
+        <View style={styles.modalBackground}>
+          <TouchableOpacity
+            style={styles.closeModalBtn}
+            onPress={() => setSelectedImage(null)}
+          >
+            <Ionicons name="close-circle" size={36} color="#FFF" />
+          </TouchableOpacity>
+
+          {selectedImage ? (
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -472,7 +548,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EAEAEA',
   },
-  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginBottom: 12 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginBottom: 4 },
+  swipeHint: { fontSize: 11, color: '#E67E22', fontWeight: '600' },
   stepperContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 6 },
   stepDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#BDC3C7' },
   stepLine: { flex: 1, height: 3, backgroundColor: '#BDC3C7' },
@@ -489,18 +572,48 @@ const styles = StyleSheet.create({
   mapBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF5FB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   mapBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2980B9', marginLeft: 4 },
   divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 12 },
-  restaurantHeaderTitle: { fontSize: 13, fontWeight: 'bold', color: '#E67E22', marginBottom: 10 },
-  itemContainer: { marginVertical: 4 },
+  itemsHorizontalScroll: {
+    paddingBottom: 6,
+  },
+  itemCardSlide: {
+    width: width * 0.75,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 12,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+  },
+  restaurantHeaderTitle: { fontSize: 13, fontWeight: 'bold', color: '#E67E22', marginBottom: 8 },
   itemHeaderRow: { flexDirection: 'row', alignItems: 'center' },
   qtyBadge: { backgroundColor: '#E8F8F5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginRight: 8 },
   qtyText: { fontSize: 12, fontWeight: 'bold', color: '#27AE60' },
   itemNameText: { fontSize: 14, fontWeight: '600', color: '#2C3E50', flex: 1 },
-  itemPriceText: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50' },
-  detailsBox: { backgroundColor: '#F8F9FA', padding: 8, borderRadius: 8, marginTop: 6, marginLeft: 28 },
-  detailItemText: { fontSize: 12, color: '#34495E', marginVertical: 2 },
+  itemPriceText: { fontSize: 14, fontWeight: 'bold', color: '#2C3E50', marginLeft: 6 },
+  detailsScrollBox: {
+    backgroundColor: '#FFF',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 8,
+    maxHeight: 110,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginVertical: 2,
+  },
+  detailItemText: { fontSize: 12, color: '#34495E' },
+  mapLinkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2980B9',
+    textDecorationLine: 'underline',
+  },
   imagesScroll: { flexDirection: 'row', marginVertical: 4 },
   itemImageThumbnail: { width: 80, height: 80, borderRadius: 8, marginRight: 8, backgroundColor: '#F2F4F4' },
-  itemInnerDivider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 8 },
   paymentMethodBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 10, borderRadius: 8, marginBottom: 12 },
   paymentMethodText: { fontSize: 13, color: '#34495E', marginLeft: 8 },
   financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 },
@@ -513,6 +626,24 @@ const styles = StyleSheet.create({
   actionBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   btnContent: { flexDirection: 'row', alignItems: 'center' },
   actionBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  // 🟢 Estilos para el visor en pantalla completa
+  modalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeModalBtn: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
+    padding: 10,
+  },
+  fullScreenImage: {
+    width: width,
+    height: height * 0.8,
+  },
 });
 
 export default OrderDetailScreen;
